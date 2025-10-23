@@ -13,7 +13,7 @@ using namespace std;
 constexpr int REDIS_PORT = 6379;
 constexpr size_t BUFFER_SIZE = 1024;
 
-int main(int argc, char** argv) {
+int client(int argc, char** argv) {
   cout << unitbuf;
 
   const char* server_ip = (argc > 1) ? argv[1] : "127.0.0.1";

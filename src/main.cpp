@@ -8,12 +8,24 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <thread>
 
 using namespace std;
 
 constexpr int REDIS_PORT = 6379;
 constexpr int BACKLOG = 5;
 constexpr size_t BUFFER_SIZE = 1024;
+
+void handle_client(int client_fd) {
+  // Simple (code crafters) immediate solution
+  char buffer[BUFFER_SIZE];
+  while(true) {
+    recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+
+    string response = "+PONG\r\n";
+    send(client_fd, response.c_str(), response.size(), 0);
+  }
+}
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -52,51 +64,17 @@ int main(int argc, char **argv) {
   
   struct sockaddr_in client_addr;
   socklen_t client_addr_len = sizeof(client_addr);
-  cout << "Waiting for a client to connect...\n";
+  while (true)
+  {
+    cout << "Waiting for a client to connect...\n";
+    int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
+    cout << "Client connected\n";
 
-  // You can use print statements as follows for debugging, they'll be visible when running tests.
-  cout << "Logs from your program will appear here!\n";
-
-  int client_fd = accept(server_fd, (struct sockaddr*) &client_addr, (socklen_t *) &client_addr_len);
-  cout << "Client connected\n";
-
-  // Simple solution
-  /*
-  int client_fd = accept(server_fd, (struct sockaddr*) &client_addr, (socklen_t *) &client_addr_len);
-  cout << "Client connected\n";
-
-  std::string response = "+PONG\r\n";
-  send(client_fd, response.c_str(), response.size(), 0);
-  close(client_fd);
-  */
-
-  // my robust solution
-  // server recieving messages
-  char buffer[BUFFER_SIZE];
-  ssize_t n = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
-
-  if (n < 0) {
-    cerr << "recv() failed: " << strerror(errno) << "\n";
-  } else {
-    buffer[n] = '\0';
-
-    if (strstr(buffer, "PING") != nullptr) {
-      const char reply[] = "+PONG\r\n";
-      ssize_t sent = send(client_fd, reply, sizeof(reply), 0);
-
-      if (sent < 0) {
-        cerr << "send() failed\n";
-      } else {
-        cout << "Sent reply: " << reply << "\n";
-      }
-    } else {
-      cout << "Unkown message send from client \n";
-    }
+    thread client_thread(handle_client, client_fd);
+    client_thread.detach();
   }
 
-  // Closing 
-  close(client_fd);
   close(server_fd);
-  
+
   return 0;
 }
