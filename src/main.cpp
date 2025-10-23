@@ -16,11 +16,28 @@ constexpr int REDIS_PORT = 6379;
 constexpr int BACKLOG = 5;
 constexpr size_t BUFFER_SIZE = 1024;
 
+void resp_parser(ssize_t num_bytes, char buffer[]) {
+  for (int i = 0; i < num_bytes; i++) {
+    cout << buffer[i];
+  }
+  cout << endl;
+}
+
 void handle_client(int client_fd) {
   // Simple (code crafters) immediate solution
-  char buffer[BUFFER_SIZE];
+  char buffer[BUFFER_SIZE] = {0};
   while(true) {
-    recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+    ssize_t num_bytes = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+    cout << num_bytes << endl;
+
+    if (num_bytes <= 0) {
+      cout << "Failed to read payload.\n" << endl;
+      close(client_fd);
+      return;
+    }
+
+    // call parser
+    resp_parser(num_bytes, buffer);
 
     string response = "+PONG\r\n";
     send(client_fd, response.c_str(), response.size(), 0);
@@ -28,6 +45,8 @@ void handle_client(int client_fd) {
 }
 
 int main(int argc, char **argv) {
+  cout << "main\n";
+
   // Flush after every std::cout / std::cerr
   cout << unitbuf;
   cerr << unitbuf;

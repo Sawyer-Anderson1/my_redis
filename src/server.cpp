@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <thread>
 
 using namespace std;
 
@@ -15,7 +16,7 @@ constexpr int REDIS_PORT = 6379;
 constexpr int BACKLOG = 5;
 constexpr size_t BUFFER_SIZE = 1024;
 
-void handle_client(int client_fd) {
+void handle_client_robust(int client_fd) {
   // my robust solution
   // server recieving messages
   char buffer[BUFFER_SIZE];
@@ -25,26 +26,35 @@ void handle_client(int client_fd) {
 
       if (n < 0) {
           cerr << "recv() failed: " << strerror(errno) << "\n";
-      } else {
+          // Closing 
+          close(client_fd);  
+          return;
+      } else if (n > 1) {
           buffer[n] = '\0';
-
+            
           if (strstr(buffer, "PING") != nullptr) {
-          const char reply[] = "+PONG\r\n";
-          ssize_t sent = send(client_fd, reply, sizeof(reply) - 1, 0);
+            const char reply[] = "+PONG\r\n";
+            ssize_t sent = send(client_fd, reply, sizeof(reply) - 1, 0);
 
-          if (sent < 0) {
-              cerr << "send() failed\n";
-          } else {
-              cout << "Sent reply: " << reply << "\n";
-          }
+            if (sent < 0) {
+                cerr << "send() failed\n";
+            } else {
+                cout << "Sent reply: " << reply << "\n";
+            }
           } else {
           cout << "Unkown message send from client \n";
           }
+      } else {
+        // Closing 
+        close(client_fd);  
+        return;
       }
   }
 }
 
 int server(int argc, char **argv) {
+  cout << "Robust server\n";
+
   // Flush after every std::cout / std::cerr
   cout << unitbuf;
   cerr << unitbuf;
@@ -89,11 +99,8 @@ int server(int argc, char **argv) {
 
     int client_fd = accept(server_fd, (struct sockaddr*) &client_addr, (socklen_t *) &client_addr_len);
     cout << "Client connected\n";
-    thread client_thread(handle_client, client_fd);
-    client_thread.detach();
-    
-    // Closing 
-    close(client_fd);   
+    thread client_thread(handle_client_robust, client_fd);
+    client_thread.detach(); 
   }
 
   close(server_fd);
