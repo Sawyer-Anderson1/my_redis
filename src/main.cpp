@@ -18,9 +18,14 @@ constexpr size_t BUFFER_SIZE = 1024;
 
 void resp_parser(ssize_t num_bytes, char buffer[]) {
   for (int i = 0; i < num_bytes; i++) {
-    cout << buffer[i];
+    if (buffer[i] == '\r' && buffer[i + 1] == '\n') {
+      // skip the CRLF
+      cout << "\\r\\n" << endl;
+      i += 1;
+    } else {
+      cout << buffer[i] << endl;
+    }
   }
-  cout << endl;
 }
 
 void handle_client(int client_fd) {
