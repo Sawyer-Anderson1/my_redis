@@ -36,7 +36,7 @@ void handle_client(int client_fd) {
         istringstream iss(s);
         
         // call parser
-        resp_parser(num_bytes, iss);
+        //resp_parser(iss);
 
         string response = "+PONG\r\n";
         send(client_fd, response.c_str(), response.size(), 0);

@@ -1,8 +1,13 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <cmath>
 
 using namespace std;
+
+constexpr string NAN = "nan";
+constexpr string POSITIVE_INF = "inf";
+constexpr string NEGATIVE_INF = "-inf";
 
 enum class RespType {
     SimpleString,
@@ -35,11 +40,20 @@ struct RespValue {
     // For Array
     vector<RespValue> resp_array_elements;
 
+    // For Boolean
+    bool bool_value;
+
+    // For Doubles
+    long double double_value;
+    long long integral;
+    long long fractional;
+    long long exponent;
+
     // ...
 };
 
 // calling the istream a buffer, since it originally was before conversion
-RespValue resp_parser(ssize_t num_bytes, istream& buffer) {
+RespValue resp_parser(istream& buffer) {
     // read the first character (to determine type)
     char type_prefix;
     buffer.get(type_prefix);
@@ -72,7 +86,7 @@ RespValue resp_parser(ssize_t num_bytes, istream& buffer) {
             // Define the RespValue and return it
             RespValue error_message = {RespType::SimpleError};
             error_message.string_value = err_msg;
-            return error_message;
+            return error_message;  
 
         // integers
         case ':':
@@ -113,7 +127,7 @@ RespValue resp_parser(ssize_t num_bytes, istream& buffer) {
             bulk_string.int_value = stoll(str_len);
 
             return bulk_string;
-            
+
         // arrays
         case '*':
             // determine array length
@@ -137,15 +151,127 @@ RespValue resp_parser(ssize_t num_bytes, istream& buffer) {
 
         // nulls
         case '_':
-          break;
+            // ignore the \r and \n
+            buffer.ignore(2);
+
+            // Define and return  the RespValue
+            return {RespType::Null};
 
         // booleans
         case '#':
-          break;
+            // determine the boolean value
+            string boolean_value;
+            getline(buffer, boolean_value, '\r');
+
+            // Define the RespValue
+            RespValue boolean = {RespType::Boolean};
+            // convert the boolean_value to the appopriate values
+            if (boolean_value == 't') {
+                boolean.bool_value = true;
+            } else if (boolean_value == 'f') {
+                boolean.bool_value = false;
+            } else {
+                cerr << "No correct boolean value provided" << endl;
+            }
+
+            return boolean;
 
         // doubles
         case ',':
-          break;
+            // what we need to possibly find
+            string integral_str;
+            string fractional_str;
+            string exponent_str;
+            
+            // define the delimiters that are possibly found within the values (not the CLRF)
+            char decimal_delimiter = '.'; // between <integral>[.<fractional>]
+            // Exponent delimiter (optional) [.<fractional>][<E|e>[sign]<exponent>]
+            char exponent_delimiter_upper = 'E';
+            char exponent_delimiter_lower = 'e';
+            char cl_delimiter = '\r';
+
+            // reads through till the CLRF ends (\n), capturing \r so I can parse value end positions
+            string line;
+            getline(buffer, line, '\n')
+            
+            size_t decimal_pos = line.find(decimal_delimiter);
+            size_t exponent_upper_pos = line.find(exponent_delimiter_upper);
+            size_t exponent_lower_pos = line.find(exponent_delimiter_lower);
+            size_t cl_pos = line.find(cl_delimiter);
+
+            size_t decimal = string::npos;
+            
+            // first case where there is both an integral and fractional value, and may have an exponent value
+            if (decimal_pos != string::npos) {
+                // extract integral_str and fractional_str
+                integral_str = line.substr(0, decimal_pos);
+                
+                
+                // Cases where we can parse for fractional end position:
+                // Where the end position is up to the cl_pos or where the end position is to an exponent
+                if (exponent_upper_pos != string::npos || exponent_lower_pos != string::npos) {
+                    // get the delimiter position
+                    if (exponent_upper_pos != string::npos) {
+                        fractional_pos = exponent_upper_pos;
+                    } else if (exponent_lower_pos != string::npos) {
+                        fractional_pos = exponent_lower_pos;
+                    }
+
+                    fractional_str = line.substr(decimal_pos, fractional_pos - decimal_pos);
+
+                    // then parse for exponents
+                    exponent_str = line.substr(fractional_pos, cl_pos - fractional_pos);
+                } else if (cl_pos != string::npos) { 
+                    // the case where there were not exponents
+                    fractional_str = line.substr(decimal_pos, cl_pos - decimal_pos);
+                }
+            } else {
+                // there were no fractional value, but may still be an exponent value with the integral value, 
+                // or the value is inf, -inf, nan
+                
+                // case where there is an exponent value (so value of integral is not inf, -inf, or nan)
+                if (exponent_upper_pos != string::npos || exponent_lower_pos != string::npos) {
+                    if (exponent_upper_pos != string::npos) {
+                        exponent_pos = exponent_upper_pos;
+                    } else if (exponent_lower_pos != string::npos) {
+                        exponent_pos = exponent_lower_pos;
+                    }
+
+                    // get integral and exponent
+                    integral_str = line.substr(0, exponent_pos);
+                    exponent_str = line.substr(exponent_pos, cl_pos - exponent_pos);
+                } else {
+                    // could be just an integer or inf, -inf, nan
+                    integral_str = line.substr(0, cl_pos);
+                }
+            }
+
+            // Define the RespValue
+            RespValue resp_double = {RespType::Double};
+
+            // add all the appropriate values for the double, check if the different value options are empty or not
+            // integral is a given (always in the protocol)
+            long double decimal_num = stoll(integral_str);
+            resp_double.integral = decimal_num;
+
+            if (!fractional_str.empty()) {
+                num_decimal_places = fractional_str.length();
+
+                resp_double.fractional = stoll(fractional_str);
+
+                // then use those values to calculate the actual double value
+                long double decimal_num = decimal_num + static_cast<long double>(resp_double.fractional) / pow(10, num_decimal_places);
+            }
+            if (!exponent_str.empty()) {
+                resp_double.exponent = stoll(exponent_str);
+
+                // then use those values to calculate the actual double value
+                long double decimal_num = pow(decimal_num, resp_double.exponent)
+            }
+            
+            // add the decimal_num to resp_double's double_value and return it
+            resp_double.double_value = decimal_num;
+            return resp_double;
           
         // big numbers
         case '(':
